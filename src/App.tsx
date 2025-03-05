@@ -1,105 +1,118 @@
-import { useEffect, useState } from "react";
-import  { CanceledError} from "./services/api-client";
-import userService ,{ User } from "./services/user-service";
+import { useState, useEffect, useRef, FormEvent } from "react";
+import axios from "axios";
 
-
+interface User {
+  id: number;
+  name: string;
+  username: string;
+}
 
 function App() {
   const [users, setUsers] = useState<User[]>([]);
   const [error, setError] = useState("");
   const [isLoading, setLoading] = useState(false);
+  const [showForm, setShowForm] = useState(false);
+  const [editingUser, setEditingUser] = useState<User | null>(null);
+  
+  const idRef = useRef<HTMLInputElement>(null);
+  const nameRef = useRef<HTMLInputElement>(null);
+  const usernameRef = useRef<HTMLInputElement>(null);
 
-  useEffect(() => {
+  const fetchUsers = () => {
     setLoading(true);
-    const {request , cancel}=userService.getAll <User>();  // getting data 
-      request.then((res) => {
+    setError("");
+    axios
+      .get<User[]>("https://jsonplaceholder.typicode.com/users")
+      .then((res) => {
         setUsers(res.data);
         setLoading(false);
       })
       .catch((err) => {
-        if (err instanceof CanceledError) return;
         setError(err.message);
         setLoading(false);
       });
-    return () => {
-      cancel ();
-    };
-  }, []);
-
-  // delete user
-
-  const deleteUser = (user: User) => {
-    const originalUsers =[...users];
-    setUsers(users.filter((u) => u.id !== user.id));
-
-    
-    userService.delete(user.id).catch((err) => {
-      setError(err.message);
-      setUsers(originalUsers);
-    });
   };
 
-  // add user
+  useEffect(() => {
+    fetchUsers();
+  }, []);
 
-  const addUser= () => {
-    const originalUsers= [ ...users];
-    const newUser: User ={ id:0 , name: 'Tarun', username : ' Tar-1'}
-    setUsers([newUser,...users ]);
+  const handleSubmit = (event: FormEvent) => {
+    event.preventDefault();
+    if (nameRef.current && usernameRef.current) {
+      if (editingUser) {
+        setUsers(users.map(user => user.id === editingUser.id ? { ...user, name: nameRef.current!.value, username: usernameRef.current!.value } : user));
+        setEditingUser(null);
+      } else {
+        const newUser: User = {
+          id: users.length + 1, // Generate a new ID
+          name: nameRef.current.value,
+          username: usernameRef.current.value,
+        };
+        setUsers([...users, newUser]);
+      }
+      if (idRef.current) idRef.current.value = "";
+      nameRef.current.value = "";
+      usernameRef.current.value = "";
+      setShowForm(false); // Hide form after adding/updating user
+    }
+  };
 
-    userService.create(newUser)
-      .then(({data : savedUser}) => setUsers ([savedUser,...users]))
-      .catch(err => {
-        setError(err.message);
-        setUsers(originalUsers);
-      });
+  const handleDelete = (id: number) => {
+    setUsers(users.filter(user => user.id !== id));
+  };
 
-  }
-  // update user
-  const updateUser = (user :User) => { 
-    const originalUsers = [ ...users]
-    const updatedUser = { ...user, name: user.name + '  -- User Updated'}
-    setUsers(users.map (u=> u.id === user.id ? updatedUser : u))
-    
-    userService.update(updatedUser)
-      .catch(err => {
-        setError ( err.message);
-        setUsers (originalUsers);
-
-      })
-  }
+  const handleUpdate = (user: User) => {
+    setEditingUser(user);
+    setShowForm(true);
+    if (idRef.current && nameRef.current && usernameRef.current) {
+      idRef.current.value = user.id.toString();
+      nameRef.current.value = user.name;
+      usernameRef.current.value = user.username;
+    }
+  };
 
   return (
-    <div className="container" style={{ maxWidth: "400px" }}>
-    {error && <p className="text-danger">{error}</p>}
-    {isLoading && <div className="spinner-border"></div>}
-    <button className="btn btn-primary mb-3" onClick={addUser}>
-      Add
-    </button>
-    <ul className="list-group">
-      {users.map((user) => (
-        <li
-          key={user.id}
-          className="list-group-item d-flex justify-content-between align-items-left"
-        >
-          {user.name}
-          <div>
-            <button
-              className="btn btn-outline-secondary btn-sm mx-1"
-              onClick={() => updateUser(user)}
-            >
-              Update
-            </button>
-            <button
-              className="btn btn-outline-danger btn-sm"
-              onClick={() => deleteUser(user)}
-            >
-              Delete
-            </button>
-          </div>
-        </li>
-      ))}
-    </ul>
-  </div>
+    <div>
+      <h2>Users Table</h2>
+      
+      <button onClick={() => { setShowForm(true); setEditingUser(null); }}>Add User</button>
+      
+      {showForm && (
+        <form onSubmit={handleSubmit}>
+          {editingUser && <input type="text" placeholder="ID" ref={idRef} readOnly />}
+          <input type="text" placeholder="Enter Name" ref={nameRef} required />
+          <input type="text" placeholder="Enter Username" ref={usernameRef} required />
+          <button type="submit">{editingUser ? "Update" : "Submit"}</button>
+        </form>
+      )}
+      
+      {isLoading && <p>Loading...</p>}
+      {error && <p className="text-danger">{error}</p>}
+      {!isLoading && !error && (
+        <table border="1" cellPadding="10">
+          <thead>
+            <tr>
+              <th>Name</th>
+              <th>Username</th>
+              <th>Action</th>
+            </tr>
+          </thead>
+          <tbody>
+            {users.map((user) => (
+              <tr key={user.id}>
+                <td>{user.name}</td>
+                <td>{user.username}</td>
+                <td>
+                  <button onClick={() => handleUpdate(user)}>Update</button>
+                  <button onClick={() => handleDelete(user.id)}>Delete</button>
+                </td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      )}
+    </div>
   );
 }
 
